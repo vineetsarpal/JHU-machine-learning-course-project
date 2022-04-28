@@ -1,0 +1,146 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Vineet"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Executive Summary
+
+In this report, we will build a model, from the training set, to predict the manner in which a certain exercise was performed - given the variable "classe" in the dataset. We will create a report describing how we built our model and use it to predict 20 different test cases
+
+Loading desired libraries
+
+```{r library}
+library(caret)
+library(randomForest)
+library(gbm)
+library(e1071)
+library(Matrix)
+set.seed(195)
+```
+
+## About the Data
+
+We will be using data from <http://groupware.les.inf.puc-rio.br/har> website. The dataset provides us with data from accelerometers on the belt, forearm, arm and dumbbell of 6 participants. These participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+```{r loadData}
+df_train <- read.csv("./data/pml-training.csv")
+df_test <- read.csv("./data/pml-testing.csv")
+
+```
+
+## Cleaning the Data
+
+Removing variables:
+
+-   with mostly NA values, i.e. columns with \> 90% NA values
+
+-   that are irrelevant to the outcome
+
+-   near Zero variance, i.e. the columns where the data has a very small no. of unique values
+
+```{r removeCols}
+df_train_clean <- df_train[, colMeans(is.na(df_train)) < 0.9]
+
+df_train_clean <- df_train_clean[, -c(1:7)]
+
+nzv <- nearZeroVar(df_train_clean)
+df_train_clean <- df_train_clean[, -nzv]
+```
+
+Updating variable data-types:
+
+-   converting classe to a factor
+```{r updateColDatatype}
+df_train_clean$classe <- as.factor(df_train_clean$classe)
+```
+
+## Creating Training and Validation Sub-sets
+
+Splitting the cleaned training set further into training and validation sub-sets
+
+```{r subset}
+inTrain <- createDataPartition(df_train_clean$classe, p = 0.7,list = FALSE)
+df_subTrain <- df_train_clean[inTrain,]
+df_subValidation <- df_train_clean[-inTrain,]
+```
+
+## Building and Testing Models
+
+We will build and test, one by one, the following popular models:
+
+-   Random Forest
+
+-   Gradient Boosted Trees
+
+-   Support Vector Machines (SVM)
+
+Then we will compare the accuracy of predictions among the above models
+
+```{r trainControl}
+trainCtrl <- trainControl(method = "cv", number = 3, verboseIter = FALSE)
+```
+
+### Random Forest
+
+Building random forest model and making predictions
+```{r rf}
+mod_rf <- randomForest(classe ~ ., data = df_subTrain, trControl = trainCtrl)
+
+pred_rf <- predict(mod_rf, newdata = df_subValidation)
+cm_rf <- confusionMatrix(pred_rf, df_subValidation$classe)
+cm_rf
+```
+
+### Gradient Boosted Trees
+
+Building gradient boosted machine model and making predictions
+```{r gbm}
+mod_gbm <- train(classe ~ ., data = df_subTrain, method = "gbm", trControl = trainCtrl, verbose = FALSE)
+
+pred_gbm <- predict(mod_gbm, newdata = df_subValidation)
+cm_gbm <- confusionMatrix(pred_gbm, df_subValidation$classe)
+cm_gbm
+```
+
+### Support Vector Machines
+
+Building SVM model and making predictions
+```{r svm}
+mod_svm <- svm(classe ~ ., data = df_subTrain, trControl = trainCtrl)
+
+pred_svm <- predict(mod_svm, newdata = df_subValidation)
+cm_svm <- confusionMatrix(pred_svm, df_subValidation$classe)
+cm_svm
+```
+
+### Model comparison
+
+Checking the Accuracy and OOS (out-of-sample) error rate for all the prediction models built
+```{r modCompare}
+comparison <- data.frame(matrix(nrow = 3,ncol = 3))
+cols <- c("model", "accuracy", "oos_error")
+colnames(comparison) <- cols
+
+comparison$model <- c("rf", "gbm", "svm")
+comparison$accuracy <- round(c(cm_rf$overall[1], cm_gbm$overall[1], cm_svm$overall[1]),digits = 3)
+comparison$oos_error <- 1-comparison$accuracy
+    
+comparison
+```
+
+Here, we can see that the Random Forest model has the best accuracy among all the models we tested
+
+
+## Prediction on Test Set
+
+Now, using Random Forest to make predictions on test data
+```{r test}
+pred <- predict(mod_rf, newdata = df_test)
+pred
+```
